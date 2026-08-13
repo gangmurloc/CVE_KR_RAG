@@ -202,10 +202,35 @@ CVE-weighted 표에서는 Hybrid+Reranker만 유독 낮게(0.0700) 보이고 나
 정답 집합 중 하나를 1위로 정확히 찍기가 원래도 어렵다"는 retrieval 자체의
 한계이며, 특정 방법의 결함으로 보기는 어렵다.
 
+### Reranker max_length: easy/hard 설정 차이가 결과를 오염시키지 않는지 확인
+
+`src/retrieval_hard.py`는 CPU에서 20개 후보를 재랭킹하는 데 질의당 수분이
+걸리는 것을 막기 위해 reranker의 `max_length`를 256으로 제한한다(easy(500)
+파이프라인의 `config.yaml`은 그대로 두고 hard 파이프라인에서만 override).
+이 값이 서로 다르면 easy와 hard의 Hybrid+Reranker 결과를 직접 비교할 때
+"CVE ID를 뺀 효과"와 "reranker 입력 길이를 줄인 효과"가 섞일 수 있다.
+
+이를 확인하기 위해 easy 질문 500개 중 8개를 무작위로 뽑아(`seed=42`) 동일한
+hybrid top-20 후보를 default(모델 기본값) max_length와 256 각각으로 재랭킹해
+비교했다(`scripts/reranker_max_length_ablation.py`). Default 설정은 8개
+질의에 1325.7초(질의당 ~166초)가 걸렸고 256 설정은 35.8초(질의당 ~4.5초)가
+걸렸지만, **1위 문서와 gold rank는 8개 질의 전부 두 설정에서 완전히
+일치했다.** easy 질문은 CVE ID가 코퍼스 문서 텍스트의 맨 앞("CVE ID: ...")에
+있어 256 토큰 이내에서도 잘리지 않으므로, 이 표본에서는 truncation이
+reranker의 판단에 영향을 주지 않았다.
+
+다만 이 확인은 표본 크기(8개)가 작고 easy 질문에서만 수행했다는 한계가
+있다 — default 설정 자체가 비현실적으로 느려서(500개 전체에 적용하면
+수십 시간) 전체 재현은 하지 않았다. 그래도 이 표본에서 두 설정이 완전히
+일치했다는 것은, 적어도 이 코퍼스처럼 핵심 식별 정보가 문서 앞부분에 오는
+구조에서는 truncation이 reranker 순위에 실질적 영향을 주지 않는다는 근거가
+된다.
+
 재현:
 
 ```bash
 python scripts/run_all.py --mode hard_retrieval_only
+python scripts/reranker_max_length_ablation.py
 ```
 
 ## 프로젝트 구조
