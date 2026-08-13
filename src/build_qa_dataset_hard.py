@@ -88,7 +88,7 @@ def _product_version_phrase(matched: list[dict[str, str]]) -> str:
     return label
 
 
-def build_questions(cve: dict[str, Any], ambiguity: dict[tuple, int]) -> list[tuple[str, str]]:
+def build_questions(cve: dict[str, Any]) -> list[tuple[str, str]]:
     matched = _matched_products(cve)
     product_label = _product_version_phrase(matched)
     av = AV_PHRASE.get(cve.get("attack_vector") or "", "알려지지 않은 경로로")
@@ -119,11 +119,10 @@ def build_questions(cve: dict[str, Any], ambiguity: dict[tuple, int]) -> list[tu
     return questions
 
 
-def make_rows(cve: dict[str, Any], index_start: int, ambiguity: dict[tuple, int]) -> list[dict[str, Any]]:
+def make_rows(cve: dict[str, Any], index_start: int) -> list[dict[str, Any]]:
     cve_id = cve["cve_id"]
     rows = []
-    key = (cve.get("attack_vector"), cve.get("privileges_required"), cve.get("user_interaction"))
-    for offset, (qtype, question) in enumerate(build_questions(cve, ambiguity)):
+    for offset, (qtype, question) in enumerate(build_questions(cve)):
         rows.append(
             {
                 "qa_id": f"{cve_id}-H{index_start + offset}",
@@ -140,11 +139,30 @@ def make_rows(cve: dict[str, Any], index_start: int, ambiguity: dict[tuple, int]
                 "gold_cwe_ids": cve.get("cwe_ids", []),
                 "gold_affected_products": cve.get("affected_products", []),
                 "is_kev": bool(cve.get("is_kev")),
-                "attack_profile_ambiguity_group_size": ambiguity.get(key, 1),
                 "contains_cve_id": False,
             }
         )
     return rows
+
+
+def _attach_gold_sets(rows: list[dict[str, Any]]) -> None:
+    """Some hard templates strip enough information that more than one CVE in the
+    corpus can produce the exact same question text (e.g. attribute_only_hard for
+    the common NETWORK/NONE/NONE profile). Any such CVE is an equally valid answer,
+    so the gold label for retrieval evaluation must be the *set* of CVEs whose
+    deterministic template output is identical to this question, not just the one
+    CVE that happened to generate it. Scoring against a single CVE would count a
+    semantically correct retrieval as a miss whenever a same-text sibling exists.
+    """
+    groups: dict[tuple[str, str], list[str]] = {}
+    for row in rows:
+        key = (row["question_type"], row["question_ko"])
+        groups.setdefault(key, []).append(row["cve_id"])
+    for row in rows:
+        key = (row["question_type"], row["question_ko"])
+        gold_set = sorted(set(groups[key]))
+        row["gold_cve_id_set"] = gold_set
+        row["gold_set_size"] = len(gold_set)
 
 
 def build(config: dict[str, Any], force: bool = False) -> tuple[Path, Path]:
@@ -157,23 +175,20 @@ def build(config: dict[str, Any], force: bool = False) -> tuple[Path, Path]:
     input_path = processed / "selected_cves_100.jsonl"
     cves = read_jsonl(input_path)
 
-    ambiguity: dict[tuple, int] = {}
-    for cve in cves:
-        key = (cve.get("attack_vector"), cve.get("privileges_required"), cve.get("user_interaction"))
-        ambiguity[key] = ambiguity.get(key, 0) + 1
-
     rows = []
     for cve in tqdm(cves, desc="한국어 hard QA 생성"):
-        rows.extend(make_rows(cve, 1, ambiguity))
+        rows.extend(make_rows(cve, 1))
     for row in rows:
         assert not re.search(r"CVE-\d{4}-\d{4,}", row["question_ko"], re.IGNORECASE), row["question_ko"]
+    _attach_gold_sets(rows)
 
     write_jsonl(rows, jsonl_path)
     frame = pd.DataFrame(rows)
-    for column in ("gold_cwe_ids", "gold_affected_products"):
+    for column in ("gold_cwe_ids", "gold_affected_products", "gold_cve_id_set"):
         frame[column] = frame[column].map(lambda x: json.dumps(x, ensure_ascii=False))
     frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    LOG.info("%d hard QA 저장: %s", len(rows), jsonl_path)
+    ambiguous = sum(1 for row in rows if row["gold_set_size"] > 1)
+    LOG.info("%d hard QA 저장 (gold set 크기 > 1: %d개): %s", len(rows), ambiguous, jsonl_path)
     return csv_path, jsonl_path
 
 

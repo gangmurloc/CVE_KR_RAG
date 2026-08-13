@@ -20,22 +20,28 @@ retrieval skill. To isolate the real effect, this repo adds a second,
 describes each vulnerability only by product/vendor/version, CVSS attack
 conditions (attack vector, privileges required, user interaction), and
 severity/impact. Once the identifier is removed, BM25's Hit@1 drops to
-0.5625 and **Hybrid + Reranker becomes the best method overall (0.6050)** —
-the opposite ranking from the easy split. A further breakdown by question
-template shows the limit of retrieval itself: once the product name is also
-withheld and only the attack-condition profile remains, every method
-collapses to ~0.01–0.02 Hit@1, because 54 of the 100 sampled CVEs share an
-identical attack-vector/privileges/user-interaction profile and are
-genuinely indistinguishable from that description alone — a dataset
-property recorded per-question as `attack_profile_ambiguity_group_size`,
-not a bug.
+0.6700 and **Hybrid becomes the best method on Hit@1 (0.7050)**, with
+Hybrid+Reranker best on Recall@5/10 — a different ranking from the easy
+split, where BM25 dominates on every metric.
+
+Some hard-split templates strip enough information that more than one CVE
+in the 100-document corpus can produce byte-identical question text (most
+acutely for `attribute_only_hard`, which drops the product name entirely —
+34 of 100 CVEs share one attack-vector/privileges/user-interaction/impact
+profile). Scoring such a question against only the one CVE that happened to
+generate it would count a semantically correct retrieval as a miss whenever
+an indistinguishable sibling exists, so retrieval is instead scored against
+the **set** of all CVEs whose deterministic template output matches the
+question verbatim (`gold_cve_id_set` in the data; 115 of 400 hard questions
+have more than one gold CVE). See "Hard split" below for the per-template
+breakdown and why this matters most for `attribute_only_hard`.
 
 | Split | Method | Hit@1 | MRR@10 |
 | --- | --- | --- | --- |
 | Easy (500, CVE ID in question) | BM25 | 1.0000 | 1.0000 |
 | Easy (500, CVE ID in question) | Hybrid + Reranker | 0.9940 | 0.9967 |
-| Hard (400, no CVE ID) | BM25 | 0.5625 | 0.6067 |
-| Hard (400, no CVE ID) | Hybrid + Reranker | 0.6050 | 0.6508 |
+| Hard (400, no CVE ID, gold-set scored) | BM25 | 0.6700 | 0.7019 |
+| Hard (400, no CVE ID, gold-set scored) | Hybrid | 0.7050 | 0.7447 |
 
 Full tables (retrieval, answer accuracy, evidence-gated abstention,
 per-template hard-split breakdown) are under `data/results/`. Setup
@@ -88,45 +94,67 @@ CVSS 공격 조건(AV/PR/UI), 심각도·영향도만으로 문서를 찾아야 
 | attack_condition_hard | "...네트워크를 통해 원격으로, 인증 없이, 사용자 상호작용 없이 악용될 수 있는..." | 벤더+제품+공격 조건 |
 | attribute_only_hard | "네트워크를 통해 원격으로, 인증 없이... 악용 가능하며 기밀성·무결성·가용성에 심각한 영향을 주는 취약점은?" | 공격 조건만(제품명 없음) |
 
-`attribute_only_hard`는 벤더/제품명을 전혀 포함하지 않으므로 동일한 공격 조건
-(AV/PR/UI 조합)을 공유하는 CVE가 여러 개면 원칙적으로 정답이 여러 개다.
-100개 코퍼스 중 가장 흔한 조합(NETWORK/NONE/NONE)은 54개 CVE가 공유하므로,
-이 템플릿의 Hit@1은 구조적으로 낮게 나오는 것이 예상되는 결과이며 방법론의
-결함이 아니라 "식별 정보가 전혀 없을 때 검색이 갖는 한계"를 보여주는
-스트레스 조건이다. 각 QA 행에는 `attack_profile_ambiguity_group_size` 필드로
-이 그룹 크기를 함께 기록해 둔다.
+### 평가 방법: gold set 기반 채점 (단일 CVE 채점의 함정)
 
-**Hard split 결과 (400 질의, CVE ID 미포함):**
+`attribute_only_hard`는 벤더/제품명을 전혀 포함하지 않으므로, 동일한 공격
+조건·영향도 조합을 가진 CVE가 여러 개면 그 문항은 원칙적으로 정답이 여러 개다
+(product_version_hard 등 나머지 세 템플릿도 드물게 같은 문제가 생긴다 — 예를
+들어 같은 벤더/제품/버전을 공유하는 CVE 두 개가 있으면 동일한 질문 텍스트가
+나온다). 이런 상태에서 "이 문항을 생성한 CVE 한 개"만 정답으로 놓고 Hit@1을
+계산하면, 검색기가 의미상 완전히 맞는(동일 텍스트를 만들어내는) 다른 CVE를
+1위로 올려도 오답으로 처리되어 지표가 실제 성능보다 낮게 나온다.
+
+이를 바로잡기 위해 `src/build_qa_dataset_hard.py`는 QA를 모두 생성한 뒤
+(question_type, question_ko) 완전히 동일한 텍스트를 만들어내는 모든 CVE를
+모아 `gold_cve_id_set`으로 저장한다. `src/retrieval_hard.py`의
+`result_row_hard()`는 검색 결과의 상위 문서 중 이 집합에 속하는 첫 번째
+순위를 `rank_of_gold_cve`로 사용한다 — 단일 CVE가 아니라 집합 전체를 기준으로
+Hit@1/Recall/MRR을 계산한다. 400개 hard 질문 중 115개(`gold_set_size > 1`)가
+실제로 둘 이상의 정답을 가지며, 그중 34개는 `attribute_only_hard`에서 하나의
+공격 조건·영향도 조합을 공유하는 최대 그룹이다.
+
+**Hard split 결과 (400 질의, CVE ID 미포함, gold set 기준 채점):**
 
 | Method | Hit@1 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |
 | --- | --- | --- | --- | --- | --- |
-| BM25 | 0.5625 | 0.6675 | 0.6975 | 0.6067 | 0.6286 |
-| Dense (BGE-M3) | 0.5650 | 0.6775 | 0.7025 | 0.6129 | 0.6347 |
-| Hybrid | 0.5825 | 0.7125 | 0.7425 | 0.6328 | 0.6593 |
-| Hybrid + Reranker | 0.6050 | 0.7150 | 0.7425 | 0.6508 | 0.6730 |
+| BM25 | 0.6700 | 0.7475 | 0.7650 | 0.7019 | 0.7172 |
+| Dense (BGE-M3) | 0.6975 | 0.7775 | 0.7925 | 0.7305 | 0.7456 |
+| Hybrid | 0.7050 | 0.8100 | 0.8325 | 0.7447 | 0.7659 |
+| Hybrid + Reranker | 0.6500 | 0.8225 | 0.8600 | 0.7332 | 0.7644 |
 
-CVE ID를 제거하자 BM25의 Hit@1은 1.000 → 0.5625로 떨어지고, 전체 지표에서
-BM25는 더 이상 최고 성능이 아니다(Hit@1 기준 Hybrid+Reranker가 가장 높음).
-즉 500개 easy 질문에서 관찰된 "BM25가 가장 강하다"는 결과는 검색 전략의
-우수성이 아니라 질문에 남아있는 고유 식별자 때문이었다는 진단이 hard split
-결과로 확인된다.
+CVE ID를 제거하자 BM25의 Hit@1은 1.000 → 0.6700으로 떨어지고, Hit@1 기준으로는
+Hybrid(0.7050)가, Recall@5/10 기준으로는 Hybrid+Reranker가 가장 높다. 즉 500개
+easy 질문에서 관찰된 "BM25가 가장 강하다"는 결과는 검색 전략의 우수성이 아니라
+질문에 남아있는 고유 식별자 때문이었다는 진단이 hard split 결과로 다시 확인된다.
+다만 easy split과 달리 hard split에서는 한 가지 방법이 모든 지표를 지배하지
+않는다 — Hybrid+Reranker는 상위 5/10위 안에는 더 잘 넣지만(Recall), 1위
+정확도(Hit@1)는 오히려 Hybrid보다 낮다.
 
 템플릿(난이도)별로 보면 그 원인이 더 분명해진다.
 
 | Method | product_version | severity_scenario | attack_condition | attribute_only |
 | --- | --- | --- | --- | --- |
-| BM25 | 0.7300 | 0.7800 | 0.7300 | 0.0100 |
-| Dense | 0.8000 | 0.7100 | 0.7300 | 0.0200 |
-| Hybrid | 0.7600 | 0.8000 | 0.7500 | 0.0200 |
-| Hybrid + Reranker | 0.8400 | 0.7300 | 0.8400 | 0.0100 |
+| BM25 | 0.7700 | 0.8000 | 0.7700 | 0.3400 |
+| Dense | 0.8600 | 0.7300 | 0.7900 | 0.4100 |
+| Hybrid | 0.8000 | 0.8200 | 0.7900 | 0.4100 |
+| Hybrid + Reranker | 0.9000 | 0.7500 | 0.8800 | 0.0700 |
 
 (값은 Hit@1) 벤더/제품명이 질문에 남아 있는 세 템플릿에서는 모든 방법이
-0.7~0.84 수준을 유지하지만, 벤더/제품명을 완전히 제거하고 공격 조건(AV/PR/UI)과
-영향도만 남긴 `attribute_only_hard`에서는 네 방법 모두 0.01~0.02로 붕괴한다.
-이는 방법론의 결함이 아니라 앞서 설명한 것처럼 100개 코퍼스 중 54개 CVE가
-동일한 공격 조건(NETWORK/NONE/NONE)을 공유해 질문 자체가 근본적으로
-답이 여러 개인 상태이기 때문이다. 즉 "검색 전략을 아무리 바꿔도 질의에
-구별 정보가 없으면 성능이 오르지 않는다"는, retrieval 자체의 한계를 보여준다.
+0.73~0.90 수준을 유지하지만, 벤더/제품명을 완전히 제거하고 공격 조건(AV/PR/UI)과
+영향도만 남긴 `attribute_only_hard`에서는 BM25/Dense/Hybrid가 0.34~0.41로 떨어진다
+(gold-set 채점 이전에는 0.01~0.02로 계산되었으나, 이는 앞서 설명한 단일-CVE
+채점의 함정 때문이었다). 여전히 0.4 안팎이라는 것은 방법론의 결함이 아니라
+"제품명 없이는 검색 전략을 아무리 바꿔도 정답 집합 중 하나를 1위로 정확히
+찍기가 원래도 어렵다"는, retrieval 자체의 한계를 보여준다.
+
+`attribute_only_hard`에서 Hybrid+Reranker만 Hit@1이 0.0700으로 다른 세 방법
+(0.34~0.41)보다 뚜렷하게 낮으면서 Recall@5(0.47)·Recall@10(0.58)는 오히려 가장
+높다는 점은 눈에 띄는 이상 패턴이다. 즉 reranker가 정답 집합에 속한 문서를
+상위 10위 안에는 잘 포함시키지만, 1위로 정확히 올리는 데는 다른 방법보다 약하다.
+정답이 여러 개인 상황에서 cross-encoder가 정답 집합 내부의 특정 CVE 문서
+하나에 과도하게 높은 점수를 주기보다 집합 전체에 점수를 고르게 분산시키기
+때문일 수 있다는 가설은 있으나, 이 저장소의 실험만으로 원인을 확정할 수는
+없다 — 후속 분석이 필요한 관찰로 남겨둔다.
 
 재현:
 
@@ -250,7 +278,9 @@ GitHub 저장소에는 용량이 큰 NVD/KEV 원본, 재생성 가능한 dense e
 - `data/raw/nvd_cves.jsonl`, `cisa_kev.jsonl`: 수집 원본의 정규화본
 - `data/processed/selected_cves_100.*`: 심각도·KEV·CWE 다양성 기준 선정본
 - `data/processed/qa_ko_500.*`: CVE당 5개 고정 템플릿 한국어 QA (질문에 CVE ID 포함)
-- `data/processed/qa_ko_hard_400.*`: CVE당 4개 속성 기반 템플릿 한국어 QA (질문에 CVE ID 미포함)
+- `data/processed/qa_ko_hard_400.*`: CVE당 4개 속성 기반 템플릿 한국어 QA (질문에
+  CVE ID 미포함). `gold_cve_id_set`/`gold_set_size` 필드에 동일 텍스트를 만드는
+  모든 CVE를 기록한다(115개 질문은 정답이 2개 이상).
 - `data/corpus/cve_corpus.jsonl`: 검색 문서 및 메타데이터
 - `data/results/retrieval_results.jsonl`: 질의·방법별 top-10 순위와 hit
 - `data/results/retrieval_metrics.*`: Hit/Recall/MRR/nDCG
