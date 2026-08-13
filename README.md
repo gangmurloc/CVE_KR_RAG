@@ -1,5 +1,49 @@
 # 한국어 CVE RAG 검색 전략별 신뢰성 평가
 
+## Abstract (English)
+
+A reproducible evaluation pipeline for Korean-language CVE question
+answering under four retrieval strategies — BM25, dense retrieval
+(BAAI/bge-m3), hybrid (BM25+dense), and hybrid with a cross-encoder
+reranker (BAAI/bge-reranker-v2-m3) — measuring both retrieval quality and
+downstream answer reliability with a fixed generation model
+(Qwen/Qwen2.5-7B-Instruct). Data is collected live from the NVD CVE API and
+the CISA Known Exploited Vulnerabilities catalog; the pipeline does not
+fabricate or hand-tune any reported number.
+
+**Main finding.** On the original 500-question benchmark, BM25 reaches
+Hit@1 = 1.000, which looks like an outright win — but every question embeds
+the gold CVE ID verbatim, and the BM25 tokenizer explicitly up-weights CVE
+ID tokens, so this measures lexical exact-match on a unique identifier, not
+retrieval skill. To isolate the real effect, this repo adds a second,
+400-question **hard split** that never mentions the CVE ID and instead
+describes each vulnerability only by product/vendor/version, CVSS attack
+conditions (attack vector, privileges required, user interaction), and
+severity/impact. Once the identifier is removed, BM25's Hit@1 drops to
+0.5625 and **Hybrid + Reranker becomes the best method overall (0.6050)** —
+the opposite ranking from the easy split. A further breakdown by question
+template shows the limit of retrieval itself: once the product name is also
+withheld and only the attack-condition profile remains, every method
+collapses to ~0.01–0.02 Hit@1, because 54 of the 100 sampled CVEs share an
+identical attack-vector/privileges/user-interaction profile and are
+genuinely indistinguishable from that description alone — a dataset
+property recorded per-question as `attack_profile_ambiguity_group_size`,
+not a bug.
+
+| Split | Method | Hit@1 | MRR@10 |
+| --- | --- | --- | --- |
+| Easy (500, CVE ID in question) | BM25 | 1.0000 | 1.0000 |
+| Easy (500, CVE ID in question) | Hybrid + Reranker | 0.9940 | 0.9967 |
+| Hard (400, no CVE ID) | BM25 | 0.5625 | 0.6067 |
+| Hard (400, no CVE ID) | Hybrid + Reranker | 0.6050 | 0.6508 |
+
+Full tables (retrieval, answer accuracy, evidence-gated abstention,
+per-template hard-split breakdown) are under `data/results/`. Setup
+instructions are in `REPRODUCIBILITY.md`. The rest of this README, including
+the full Method/Limitations sections, is in Korean.
+
+---
+
 ## 연구 목적
 
 한국어 CVE 보안 질의에 대해 BM25, Dense Retrieval, Hybrid Retrieval,
