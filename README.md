@@ -46,7 +46,8 @@ one 34-to-1. Collapsing duplicates down to the 307 distinct queries
 (**query-weighted**) changes which method looks best: CVE-weighted ranks
 Hybrid highest on Hit@1 (0.7050) and Hybrid+Reranker lowest (0.6500);
 query-weighted — arguably the more defensible unit of evaluation — ranks
-**Hybrid+Reranker highest on every metric** (Hit@1 = 0.7883). Both weightings
+**Hybrid+Reranker highest on most metrics** (Hit@1 = 0.7883), while tying
+Hybrid on Hit@10 and trailing it slightly on Recall@10. Both weightings
 agree on the headline diagnosis (BM25 loses its lead once the ID is
 removed); they disagree on which retrieval strategy is actually best, which
 is itself evidence that evaluation-unit choice matters as much as the
@@ -174,10 +175,11 @@ gold set을 가진 행이 34번 들어 있다. CVE 1개당 질문 1개라는 원
 두 표는 "어느 방법이 최고인가"라는 결론 자체를 바꾼다. CVE-weighted 기준으로는
 Hybrid(0.7050)가 Hit@1 1위이고 Hybrid+Reranker(0.6500)가 오히려 가장 낮았지만,
 중복 질의를 collapse한 query-weighted 기준으로는 **Hybrid+Reranker(0.7883)가
-모든 지표에서 1위**다. 이 반전은 CVE-weighted 평균에서 `attribute_only_hard`의
-34-CVE 그룹(반복 34회)이 Hybrid+Reranker에 특히 불리하게 반복 집계됐기 때문이며,
-독립적인 307개 질의로 보면 Hybrid+Reranker가 가장 강하다는 것이 더 신뢰할 수
-있는 결론이다. 두 관점 모두 공통적으로 확인하는 것은: CVE ID를 제거하면 BM25가
+대부분의 지표에서 가장 높고**, Hit@10은 Hybrid와 동률이며 Recall@10은 Hybrid가
+약간 더 높다. 이 반전은 CVE-weighted 평균에서 `attribute_only_hard`의 34-CVE
+그룹(반복 34회)이 Hybrid+Reranker에 특히 불리하게 반복 집계됐기 때문이며,
+독립적인 307개 질의로 보면 Hybrid+Reranker가 대체로 가장 강하다는 것이 더
+신뢰할 수 있는 결론이다. 두 관점 모두 공통적으로 확인하는 것은: CVE ID를 제거하면 BM25가
 더 이상 1위가 아니라는 진단 자체는 CVE-weighted든 query-weighted든 동일하게
 성립한다.
 
