@@ -24,14 +24,20 @@ cve_kr_rag_eval/
 │   ├── fetch_cisa_kev.py
 │   ├── select_cves.py
 │   ├── build_qa_dataset.py
+│   ├── build_stress_dataset.py
 │   ├── build_corpus.py
 │   ├── retrieval.py
+│   ├── retrieval_stress.py
 │   ├── evaluate_retrieval.py
 │   ├── generate_answers_qwen.py
+│   ├── generate_stress_answers_qwen.py
 │   ├── evaluate_answers.py
+│   ├── evaluate_evidence_gate.py
 │   ├── make_tables.py
 │   └── utils.py
-└── scripts/run_all.py
+└── scripts/
+    ├── run_all.py
+    └── run_reliability_stress.py
 ```
 
 ## 설치
@@ -122,7 +128,11 @@ GitHub 저장소에는 용량이 큰 NVD/KEV 원본, 재생성 가능한 dense e
 - `data/results/retrieval_results.jsonl`: 질의·방법별 top-10 순위와 hit
 - `data/results/retrieval_metrics.*`: Hit/Recall/MRR/nDCG
 - `data/results/generated_answers_qwen.jsonl`: 모델 원문, 복구 JSON, 파싱 상태,
-  인용 및 오류. JSON 실패 행도 삭제하지 않는다.
+  인용 및 오류. JSON 실패 행도 삭제하지 않는다. 각 행에는 생성 모델명과
+  generation 설정 metadata를 함께 기록한다.
+- `data/results/stress_generated_answers_qwen.jsonl`: 답변 불가능 조건의 Qwen 출력
+- `data/results/evidence_gate_metrics.*`: Evidence Gate 수용률, 오수용률, 선택적 위험 지표
+- `data/results/stress_abstention_metrics.*`: 스트레스 유형별 abstention/gating 지표
 - `data/results/answer_auto_metrics_qwen.*`: 방법별 자동 신뢰성 지표
 - `data/results/human_eval_template_qwen.csv`: 0–2점 수기 평가 양식
 - `data/results/human_eval_sample_qwen.csv`: 방법명을 가린 paired human 평가 표본
