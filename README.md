@@ -8,8 +8,9 @@ answering under four retrieval strategies — BM25, dense retrieval
 reranker (BAAI/bge-reranker-v2-m3) — measuring both retrieval quality and
 downstream answer reliability with a fixed generation model
 (Qwen/Qwen2.5-7B-Instruct). Data is collected live from the NVD CVE API and
-the CISA Known Exploited Vulnerabilities catalog; the pipeline does not
-fabricate or hand-tune any reported number.
+the CISA Known Exploited Vulnerabilities catalog. All reported metrics are
+generated from the released evaluation pipeline and corresponding result
+artifacts.
 
 **Main finding.** On the original 500-question benchmark, BM25 reaches
 Hit@1 = 1.000, which looks like an outright win — but every question embeds
