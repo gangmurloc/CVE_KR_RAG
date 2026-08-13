@@ -11,6 +11,55 @@ Hybrid+Reranker가 검색 성능과 최종 답변 신뢰성에 미치는 영향�
 실험은 새 모델을 학습하지 않는다. NVD와 CISA KEV에서 실제 데이터를 수집하며,
 코드는 측정되지 않은 수치나 가짜 생성 결과를 만들지 않는다.
 
+## Key Results
+
+100개 CVE × 5개 고정 템플릿(총 500 QA) 기준. 전체 표는 `data/results/`에 있다.
+
+| Method | Retrieval Hit@1 | Retrieval MRR@10 | Answer Field Accuracy | Citation Accuracy |
+| --- | --- | --- | --- | --- |
+| BM25 | 1.0000 | 1.0000 | 0.9120 | 0.9220 |
+| Dense (BGE-M3) | 0.4000 | 0.4987 | 0.6217 | 0.6120 |
+| Hybrid | 0.9980 | 0.9990 | 0.9363 | 0.9420 |
+| Hybrid + Reranker | 0.9940 | 0.9967 | 0.9473 | 0.9560 |
+
+이 500개 질문은 모두 `{cve_id}`를 질문 문자열에 직접 포함하고, BM25 토크나이저가
+CVE ID 토큰을 명시적으로 가중(`retrieval.py`의 `tokenize_kr_direct`)하기 때문에
+BM25의 Hit@1 = 1.000은 검색 전략의 우수성이 아니라 **질문에 포함된 고유 식별자를
+그대로 되찾는 lexical exact-match**의 결과다. Dense retrieval만 놓고 보면
+오히려 BM25보다 낮은 성능(Hit@1 0.400)을 보이는데, 이는 식별자 shortcut이 없을 때
+검색 전략들이 실제로 어떻게 갈리는지가 이 500개 질문만으로는 보이지 않는다는
+뜻이기도 하다.
+
+### Hard split: CVE ID를 제거한 속성 기반 질의
+
+위 문제를 진단하기 위해 `{cve_id}`를 전혀 포함하지 않는 400개의 질문
+(`data/processed/qa_ko_hard_400.csv`, CVE당 4개 템플릿)을 추가했다. 제품/벤더/버전,
+CVSS 공격 조건(AV/PR/UI), 심각도·영향도만으로 문서를 찾아야 하며, 템플릿별로
+식별 가능한 정보량을 단계적으로 줄인다(`src/build_qa_dataset_hard.py`).
+
+| 난이도 | 질문 예시 | 포함 정보 |
+| --- | --- | --- |
+| product_version_hard | "Oracle Coherence (3.7.1.0 버전)에 존재하는 보안 취약점은 무엇인가?" | 벤더+제품+버전 |
+| severity_scenario_hard | "...CVSS 기본점수 9.8(CRITICAL 등급)의 취약점으로..." | 벤더+제품+CVSS |
+| attack_condition_hard | "...네트워크를 통해 원격으로, 인증 없이, 사용자 상호작용 없이 악용될 수 있는..." | 벤더+제품+공격 조건 |
+| attribute_only_hard | "네트워크를 통해 원격으로, 인증 없이... 악용 가능하며 기밀성·무결성·가용성에 심각한 영향을 주는 취약점은?" | 공격 조건만(제품명 없음) |
+
+`attribute_only_hard`는 벤더/제품명을 전혀 포함하지 않으므로 동일한 공격 조건
+(AV/PR/UI 조합)을 공유하는 CVE가 여러 개면 원칙적으로 정답이 여러 개다.
+100개 코퍼스 중 가장 흔한 조합(NETWORK/NONE/NONE)은 54개 CVE가 공유하므로,
+이 템플릿의 Hit@1은 구조적으로 낮게 나오는 것이 예상되는 결과이며 방법론의
+결함이 아니라 "식별 정보가 전혀 없을 때 검색이 갖는 한계"를 보여주는
+스트레스 조건이다. 각 QA 행에는 `attack_profile_ambiguity_group_size` 필드로
+이 그룹 크기를 함께 기록해 둔다.
+
+<!-- HARD_RESULTS_TABLE -->
+
+재현:
+
+```bash
+python scripts/run_all.py --mode hard_retrieval_only
+```
+
 ## 프로젝트 구조
 
 ```text
@@ -24,11 +73,14 @@ cve_kr_rag_eval/
 │   ├── fetch_cisa_kev.py
 │   ├── select_cves.py
 │   ├── build_qa_dataset.py
+│   ├── build_qa_dataset_hard.py
 │   ├── build_stress_dataset.py
 │   ├── build_corpus.py
 │   ├── retrieval.py
+│   ├── retrieval_hard.py
 │   ├── retrieval_stress.py
 │   ├── evaluate_retrieval.py
+│   ├── evaluate_retrieval_hard.py
 │   ├── generate_answers_qwen.py
 │   ├── generate_stress_answers_qwen.py
 │   ├── evaluate_answers.py
@@ -45,8 +97,8 @@ cve_kr_rag_eval/
 Python 3.10 이상을 권장한다.
 
 ```bash
-git clone <REPOSITORY_URL>
-cd cve_kr_rag_eval
+git clone https://github.com/gangmurloc/CVE_KR_RAG_GIL.git
+cd CVE_KR_RAG_GIL
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -123,10 +175,13 @@ GitHub 저장소에는 용량이 큰 NVD/KEV 원본, 재생성 가능한 dense e
 
 - `data/raw/nvd_cves.jsonl`, `cisa_kev.jsonl`: 수집 원본의 정규화본
 - `data/processed/selected_cves_100.*`: 심각도·KEV·CWE 다양성 기준 선정본
-- `data/processed/qa_ko_500.*`: CVE당 5개 고정 템플릿 한국어 QA
+- `data/processed/qa_ko_500.*`: CVE당 5개 고정 템플릿 한국어 QA (질문에 CVE ID 포함)
+- `data/processed/qa_ko_hard_400.*`: CVE당 4개 속성 기반 템플릿 한국어 QA (질문에 CVE ID 미포함)
 - `data/corpus/cve_corpus.jsonl`: 검색 문서 및 메타데이터
 - `data/results/retrieval_results.jsonl`: 질의·방법별 top-10 순위와 hit
 - `data/results/retrieval_metrics.*`: Hit/Recall/MRR/nDCG
+- `data/results/retrieval_metrics_hard.*`: Hard split(CVE ID 미포함) 방법별 Hit/Recall/MRR/nDCG
+- `data/results/retrieval_metrics_hard_by_type.*`: Hard split 템플릿(난이도)별 세부 지표
 - `data/results/generated_answers_qwen.jsonl`: 모델 원문, 복구 JSON, 파싱 상태,
   인용 및 오류. JSON 실패 행도 삭제하지 않는다. 각 행에는 생성 모델명과
   generation 설정 metadata를 함께 기록한다.
@@ -203,11 +258,16 @@ CVSS v3.x 필드 완전성, 심각도 분포와 CWE 다양성을 고려하여 10
 가중합 hybrid retrieval, BGE reranker를 적용한 hybrid retrieval을 비교했으며,
 검색 성능은 Hit@1, Recall@5/10, MRR@10, nDCG@10으로 평가하였다. 생성 단계에는
 각 전략의 상위 5개 문서를 동일한 Qwen/Qwen2.5-7B-Instruct 프롬프트에 제공하고,
-구조화 필드 일치도, CWE F1, 인용 정확도 및 수기 충실도를 측정하였다.
+구조화 필드 일치도, CWE F1, 인용 정확도 및 수기 충실도를 측정하였다. 질문에
+포함된 CVE ID 자체가 검색에 미치는 lexical shortcut 효과를 분리하기 위해,
+동일한 100개 CVE에 대해 CVE ID를 포함하지 않고 제품·버전·CVSS 공격 조건만으로
+구성된 400개 질의(hard split)를 추가로 평가하였다.
 
 ## 실험 한계
 
-- 고정 템플릿 질의는 실제 사용자 표현의 다양성을 완전히 반영하지 않는다.
+- 고정 템플릿 질의는 실제 사용자 표현의 다양성을 완전히 반영하지 않는다. Hard
+  split은 CVE ID라는 lexical shortcut을 제거했을 뿐, 여전히 결정적 템플릿이며
+  실제 사용자의 자유 형식 질의를 대체하지 않는다.
 - NVD 설명과 CPE는 불완전할 수 있고 reference URL 자체는 페이지 본문 근거가 아니다.
 - 한 CVE당 하나의 통합 chunk를 사용하는 설계는 긴 외부 advisory의 세부 내용을
   평가하지 않는다.

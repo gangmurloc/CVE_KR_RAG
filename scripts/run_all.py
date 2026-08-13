@@ -25,7 +25,7 @@ def run_stage(script: str, config: str | None, force: bool = False) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="CVE Korean RAG evaluation pipeline")
     parser.add_argument(
-        "--mode", choices=["retrieval_only", "full_qwen", "generation_only"],
+        "--mode", choices=["retrieval_only", "full_qwen", "generation_only", "hard_retrieval_only"],
         default="retrieval_only",
     )
     parser.add_argument("--config", default=None)
@@ -39,6 +39,14 @@ def main() -> None:
     if args.mode in {"retrieval_only", "full_qwen"}:
         for script in preparation:
             run_stage(script, args.config, args.force)
+    if args.mode == "hard_retrieval_only":
+        for script in ["fetch_nvd.py", "fetch_cisa_kev.py", "select_cves.py", "build_corpus.py"]:
+            run_stage(script, args.config, args.force)
+        for script in ["build_qa_dataset_hard.py", "retrieval_hard.py"]:
+            run_stage(script, args.config, args.force)
+        run_stage("evaluate_retrieval_hard.py", args.config)
+        print(f"\n[done] mode={args.mode}; results={ROOT / 'data' / 'results'}", flush=True)
+        return
     if args.mode in {"full_qwen", "generation_only"}:
         run_stage("generate_answers_qwen.py", args.config, args.force)
         run_stage("evaluate_answers.py", args.config)

@@ -95,7 +95,10 @@ class RetrievalEngine:
             if self._reranker is None:
                 from sentence_transformers import CrossEncoder
 
-                self._reranker = CrossEncoder(self.config["retrieval"]["reranker"]["model_name"])
+                reranker_cfg = self.config["retrieval"]["reranker"]
+                max_length = reranker_cfg.get("max_length")
+                kwargs = {"max_length": max_length} if max_length else {}
+                self._reranker = CrossEncoder(reranker_cfg["model_name"], **kwargs)
             pairs = [(query, self.texts[int(index)]) for index in indices]
             scores = np.asarray(self._reranker.predict(pairs, show_progress_bar=False), dtype=np.float64)
             order = np.argsort(-scores, kind="stable")
