@@ -1,0 +1,59 @@
+experiment:
+  seed: 42
+  num_cves: 100
+  questions_per_cve: 5
+  top_k_retrieval: 10
+  top_k_context: 5
+
+sampling:
+  target_severity_distribution:
+    CRITICAL: 40
+    HIGH: 40
+    MEDIUM: 20
+  prefer_kev: true
+  kev_max_fraction: 0.6
+  min_description_length: 80
+
+retrieval:
+  bm25:
+    enabled: true
+  dense:
+    enabled: true
+    embedding_model: "BAAI/bge-m3"
+    batch_size: 16
+  hybrid:
+    enabled: true
+    alpha: 0.5
+  reranker:
+    enabled: true
+    model_name: "BAAI/bge-reranker-v2-m3"
+    top_n_before_rerank: 20
+
+generation:
+  enabled: true
+  model_name: "Qwen/Qwen2.5-7B-Instruct"
+  device: "auto"
+  load_in_4bit: true
+  torch_dtype: "auto"
+  max_new_tokens: 1024
+  temperature: 0.0
+  top_p: 1.0
+  do_sample: false
+  context_top_k: 5
+  output_json: true
+
+fetch:
+  nvd:
+    start_date: null
+    end_date: null
+    results_per_page: 1000
+    max_records: null
+    force: false
+  cisa_kev:
+    force: false
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  corpus_dir: "data/corpus"
+  results_dir: "data/results"

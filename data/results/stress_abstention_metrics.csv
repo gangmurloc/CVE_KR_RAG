@@ -1,0 +1,13 @@
+﻿Method,Stress Type,N,Qwen Explicit Abstention Rate,Qwen Parse Success Rate,Retrieval-ID Gate Correct Abstention,Citation Gate Correct Abstention
+bm25,heldout_real_cve,100,0.990000,1.000000,1.000000,1.000000
+dense,heldout_real_cve,100,0.970000,1.000000,1.000000,1.000000
+hybrid,heldout_real_cve,100,0.950000,0.980000,1.000000,1.000000
+hybrid_reranker,heldout_real_cve,100,0.980000,1.000000,1.000000,1.000000
+bm25,nonexistent_cve,50,1.000000,1.000000,1.000000,1.000000
+dense,nonexistent_cve,50,1.000000,1.000000,1.000000,1.000000
+hybrid,nonexistent_cve,50,1.000000,1.000000,1.000000,1.000000
+hybrid_reranker,nonexistent_cve,50,1.000000,1.000000,1.000000,1.000000
+bm25,gold_evidence_removed,50,0.960000,1.000000,1.000000,1.000000
+dense,gold_evidence_removed,50,1.000000,0.980000,1.000000,1.000000
+hybrid,gold_evidence_removed,50,1.000000,0.980000,1.000000,1.000000
+hybrid_reranker,gold_evidence_removed,50,0.940000,1.000000,1.000000,1.000000

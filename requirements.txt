@@ -1,0 +1,15 @@
+pandas>=2.0
+numpy>=1.24
+requests>=2.31
+tqdm>=4.66
+PyYAML>=6.0
+python-dotenv>=1.0
+scikit-learn>=1.3
+rank-bm25>=0.2.2
+sentence-transformers>=3.0
+torch>=2.1
+transformers>=4.45
+accelerate>=0.34
+# Optional dependencies; install separately so their failure cannot block retrieval:
+# bitsandbytes>=0.43
+# evaluate>=0.4

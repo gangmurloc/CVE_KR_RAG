@@ -1,0 +1,22 @@
+| Query Type | Method | Hit@1 | Recall@5 | MRR@10 | Field Accuracy | Citation Accuracy |
+| --- | --- | --- | --- | --- | --- | --- |
+| vulnerability_summary | bm25 | 1.0000 | 1.0000 | 1.0000 | 0.9133 | 0.9200 |
+| vulnerability_summary | dense | 0.4800 | 0.7000 | 0.5686 | 0.6783 | 0.6700 |
+| vulnerability_summary | hybrid | 1.0000 | 1.0000 | 1.0000 | 0.9567 | 0.9700 |
+| vulnerability_summary | hybrid_reranker | 1.0000 | 1.0000 | 1.0000 | 0.9517 | 0.9700 |
+| affected_product | bm25 | 1.0000 | 1.0000 | 1.0000 | 0.9633 | 0.9700 |
+| affected_product | dense | 0.3700 | 0.6800 | 0.4879 | 0.6700 | 0.6700 |
+| affected_product | hybrid | 1.0000 | 1.0000 | 1.0000 | 0.9417 | 0.9400 |
+| affected_product | hybrid_reranker | 0.9900 | 1.0000 | 0.9950 | 0.9767 | 0.9800 |
+| attack_condition | bm25 | 1.0000 | 1.0000 | 1.0000 | 0.9733 | 0.9900 |
+| attack_condition | dense | 0.2800 | 0.4800 | 0.3715 | 0.5100 | 0.4800 |
+| attack_condition | hybrid | 1.0000 | 1.0000 | 1.0000 | 0.9967 | 1.0000 |
+| attack_condition | hybrid_reranker | 0.9800 | 1.0000 | 0.9883 | 0.9917 | 1.0000 |
+| severity_reason | bm25 | 1.0000 | 1.0000 | 1.0000 | 0.7383 | 0.7500 |
+| severity_reason | dense | 0.3700 | 0.6300 | 0.4792 | 0.5717 | 0.5600 |
+| severity_reason | hybrid | 0.9900 | 1.0000 | 0.9950 | 0.8417 | 0.8400 |
+| severity_reason | hybrid_reranker | 1.0000 | 1.0000 | 1.0000 | 0.8750 | 0.8800 |
+| mitigation | bm25 | 1.0000 | 1.0000 | 1.0000 | 0.9717 | 0.9800 |
+| mitigation | dense | 0.5000 | 0.6900 | 0.5864 | 0.6783 | 0.6800 |
+| mitigation | hybrid | 1.0000 | 1.0000 | 1.0000 | 0.9450 | 0.9600 |
+| mitigation | hybrid_reranker | 1.0000 | 1.0000 | 1.0000 | 0.9417 | 0.9500 |
