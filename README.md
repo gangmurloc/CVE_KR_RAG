@@ -127,8 +127,8 @@ cve_kr_rag_eval/
 Python 3.10 이상을 권장한다.
 
 ```bash
-git clone https://github.com/gangmurloc/CVE_KR_RAG_GIL.git
-cd CVE_KR_RAG_GIL
+git clone https://github.com/gangmurloc/CVE_KR_RAG.git
+cd CVE_KR_RAG
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
