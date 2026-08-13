@@ -20,33 +20,49 @@ retrieval skill. To isolate the real effect, this repo adds a second,
 describes each vulnerability only by product/vendor/version, CVSS attack
 conditions (attack vector, privileges required, user interaction), and
 severity/impact. Once the identifier is removed, BM25's Hit@1 drops to
-0.6700 and **Hybrid becomes the best method on Hit@1 (0.7050)**, with
-Hybrid+Reranker best on Recall@5/10 — a different ranking from the easy
-split, where BM25 dominates on every metric.
+0.67–0.73 (depending on evaluation weighting, see below) and BM25 is no
+longer the top method on any metric — a different ranking from the easy
+split, where BM25 dominates across the board.
 
 Some hard-split templates strip enough information that more than one CVE
 in the 100-document corpus can produce byte-identical question text (most
 acutely for `attribute_only_hard`, which drops the product name entirely —
 34 of 100 CVEs share one attack-vector/privileges/user-interaction/impact
-profile). Scoring such a question against only the one CVE that happened to
-generate it would count a semantically correct retrieval as a miss whenever
-an indistinguishable sibling exists, so retrieval is instead scored against
-the **set** of all CVEs whose deterministic template output matches the
-question verbatim (`gold_cve_id_set` in the data; 115 of 400 hard questions
-have more than one gold CVE). See "Hard split" below for the per-template
-breakdown and why this matters most for `attribute_only_hard`.
+profile; 115 of 400 hard questions have more than one gold CVE overall).
+Retrieval is scored against the **set** of all CVEs whose deterministic
+template output matches the question verbatim (`gold_cve_id_set`), not the
+single CVE that happened to generate it — otherwise a semantically correct
+retrieval of an indistinguishable sibling CVE would be counted as a miss.
+This also means the standard single-gold Recall@k/nDCG@k formulas do not
+apply as-is; `metrics_for_multigold()` recomputes them as true set-recall
+and multi-relevant nDCG, and `Hit@k` is reported alongside `Recall@k` as a
+distinct, non-equivalent metric once a query can have multiple correct
+answers.
 
-| Split | Method | Hit@1 | MRR@10 |
-| --- | --- | --- | --- |
-| Easy (500, CVE ID in question) | BM25 | 1.0000 | 1.0000 |
-| Easy (500, CVE ID in question) | Hybrid + Reranker | 0.9940 | 0.9967 |
-| Hard (400, no CVE ID, gold-set scored) | BM25 | 0.6700 | 0.7019 |
-| Hard (400, no CVE ID, gold-set scored) | Hybrid | 0.7050 | 0.7447 |
+Because several rows share an identical (question_type, question_text) pair
+(e.g. the 34-CVE `attribute_only_hard` group), simply averaging over all 400
+generated rows (**CVE-weighted**) lets one shared question outweigh a unique
+one 34-to-1. Collapsing duplicates down to the 307 distinct queries
+(**query-weighted**) changes which method looks best: CVE-weighted ranks
+Hybrid highest on Hit@1 (0.7050) and Hybrid+Reranker lowest (0.6500);
+query-weighted — arguably the more defensible unit of evaluation — ranks
+**Hybrid+Reranker highest on every metric** (Hit@1 = 0.7883). Both weightings
+agree on the headline diagnosis (BM25 loses its lead once the ID is
+removed); they disagree on which retrieval strategy is actually best, which
+is itself evidence that evaluation-unit choice matters as much as the
+identifier-shortcut fix.
+
+| Split | Weighting | Method | Hit@1 | MRR@10 |
+| --- | --- | --- | --- | --- |
+| Easy (500, CVE ID in question) | — | BM25 | 1.0000 | 1.0000 |
+| Easy (500, CVE ID in question) | — | Hybrid + Reranker | 0.9940 | 0.9967 |
+| Hard (400, no CVE ID) | CVE-weighted | Hybrid | 0.7050 | 0.7447 |
+| Hard (400, no CVE ID) | Query-weighted (307 unique) | Hybrid + Reranker | 0.7883 | 0.8272 |
 
 Full tables (retrieval, answer accuracy, evidence-gated abstention,
-per-template hard-split breakdown) are under `data/results/`. Setup
-instructions are in `REPRODUCIBILITY.md`. The rest of this README, including
-the full Method/Limitations sections, is in Korean.
+per-template and per-weighting hard-split breakdowns) are under
+`data/results/`. Setup instructions are in `REPRODUCIBILITY.md`. The rest of
+this README, including the full Method/Limitations sections, is in Korean.
 
 ---
 
@@ -108,53 +124,83 @@ CVSS 공격 조건(AV/PR/UI), 심각도·영향도만으로 문서를 찾아야 
 (question_type, question_ko) 완전히 동일한 텍스트를 만들어내는 모든 CVE를
 모아 `gold_cve_id_set`으로 저장한다. `src/retrieval_hard.py`의
 `result_row_hard()`는 검색 결과의 상위 문서 중 이 집합에 속하는 첫 번째
-순위를 `rank_of_gold_cve`로 사용한다 — 단일 CVE가 아니라 집합 전체를 기준으로
-Hit@1/Recall/MRR을 계산한다. 400개 hard 질문 중 115개(`gold_set_size > 1`)가
+순위를 `rank_of_gold_cve`로 사용한다. 400개 hard 질문 중 115개(`gold_set_size > 1`)가
 실제로 둘 이상의 정답을 가지며, 그중 34개는 `attribute_only_hard`에서 하나의
 공격 조건·영향도 조합을 공유하는 최대 그룹이다.
 
-**Hard split 결과 (400 질의, CVE ID 미포함, gold set 기준 채점):**
+gold set이 여러 개일 수 있다는 사실은 지표 정의에도 영향을 준다.
 
-| Method | Hit@1 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |
-| --- | --- | --- | --- | --- | --- |
-| BM25 | 0.6700 | 0.7475 | 0.7650 | 0.7019 | 0.7172 |
-| Dense (BGE-M3) | 0.6975 | 0.7775 | 0.7925 | 0.7305 | 0.7456 |
-| Hybrid | 0.7050 | 0.8100 | 0.8325 | 0.7447 | 0.7659 |
-| Hybrid + Reranker | 0.6500 | 0.8225 | 0.8600 | 0.7332 | 0.7644 |
+- **Hit@k**(=top-k 안에 gold set 중 하나라도 있으면 1)와 **MRR@10**(첫 번째로
+  맞힌 순위의 역수)은 gold가 여러 개여도 정의가 그대로 유효한 표준 IR 지표다.
+- 반면 **Recall@k**는 "gold set 중 top-k에 들어온 것의 비율"
+  (`|top-k ∩ gold| / |gold|`)이어야 한다. gold가 하나뿐이면 이 값과 Hit@k가
+  같아지지만, gold가 여러 개면 서로 다른 지표다 — 예를 들어 gold 4개 중 top-5에
+  1개만 들어오면 Recall@5 = 0.25이지 1.0이 아니다. **nDCG@10**도 같은 이유로
+  top-10 안에 있는 gold 문서 전부의 위치를 반영한
+  `DCG@10 = Σ 1/log2(rank+1)` (해당 rank의 문서가 gold일 때만) 과
+  `IDCG@10 = Σ_{i=1..min(|gold|,10)} 1/log2(i+1)`의 비율로 계산해야 한다.
+  `evaluate_retrieval_hard.py`의 `metrics_for_multigold()`가 이 두 지표를
+  올바르게 구현하고, `Hit@5`/`Hit@10`은 기존 "Recall"이라는 이름이 실제로
+  의미하던 것(=any-hit)을 그대로 별도 컬럼으로 남긴다.
 
-CVE ID를 제거하자 BM25의 Hit@1은 1.000 → 0.6700으로 떨어지고, Hit@1 기준으로는
-Hybrid(0.7050)가, Recall@5/10 기준으로는 Hybrid+Reranker가 가장 높다. 즉 500개
-easy 질문에서 관찰된 "BM25가 가장 강하다"는 결과는 검색 전략의 우수성이 아니라
-질문에 남아있는 고유 식별자 때문이었다는 진단이 hard split 결과로 다시 확인된다.
-다만 easy split과 달리 hard split에서는 한 가지 방법이 모든 지표를 지배하지
-않는다 — Hybrid+Reranker는 상위 5/10위 안에는 더 잘 넣지만(Recall), 1위
-정확도(Hit@1)는 오히려 Hybrid보다 낮다.
+또한 400개 행 중 다수는 같은 (question_type, question_ko)를 gold set 크기만큼
+반복해서 담고 있다 — 예를 들어 위에서 언급한 34-CVE 그룹은 완전히 동일한 질의·
+gold set을 가진 행이 34번 들어 있다. CVE 1개당 질문 1개라는 원 설계를 그대로
+평균 내면(**CVE-weighted**, 400행), 이 하나의 attribute_only_hard 그룹이 다른
+독립적인 질의 33개와 같은 가중치를 갖게 된다. 이는 임의로 정의할 수 있는 평가
+단위이긴 하지만, gold를 "질문이 실제로 구별할 수 있는 정답 집합"으로 재정의한
+이상 "구별 가능한 질의 하나"를 한 단위로 보는 평가(**query-weighted**,
+(question_type, question_ko) 기준 dedup, 400개 중 307개 unique)가 더 자연스럽다.
+아래에는 두 결과를 모두 낸다.
 
-템플릿(난이도)별로 보면 그 원인이 더 분명해진다.
+**Hard split 결과 — CVE-weighted (400 질의, 중복 포함):**
 
-| Method | product_version | severity_scenario | attack_condition | attribute_only |
+| Method | Hit@1 | Hit@5 | Hit@10 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| BM25 | 0.6700 | 0.7475 | 0.7650 | 0.6675 | 0.6975 | 0.7019 | 0.7058 |
+| Dense (BGE-M3) | 0.6975 | 0.7775 | 0.7925 | 0.6775 | 0.7025 | 0.7305 | 0.6943 |
+| Hybrid | 0.7050 | 0.8100 | 0.8325 | 0.7125 | 0.7425 | 0.7447 | 0.7177 |
+| Hybrid + Reranker | 0.6500 | 0.8225 | 0.8600 | 0.7150 | 0.7425 | 0.7332 | 0.7340 |
+
+**Hard split 결과 — query-weighted (307 unique 질의):**
+
+| Method | Hit@1 | Hit@5 | Hit@10 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| BM25 | 0.7329 | 0.8274 | 0.8502 | 0.8223 | 0.8456 | 0.7722 | 0.7899 |
+| Dense (BGE-M3) | 0.7362 | 0.8306 | 0.8502 | 0.8210 | 0.8423 | 0.7769 | 0.7903 |
+| Hybrid | 0.7590 | 0.8730 | 0.9023 | 0.8639 | 0.8945 | 0.8041 | 0.8245 |
+| Hybrid + Reranker | **0.7883** | 0.8795 | 0.9023 | 0.8694 | 0.8880 | 0.8272 | 0.8394 |
+
+두 표는 "어느 방법이 최고인가"라는 결론 자체를 바꾼다. CVE-weighted 기준으로는
+Hybrid(0.7050)가 Hit@1 1위이고 Hybrid+Reranker(0.6500)가 오히려 가장 낮았지만,
+중복 질의를 collapse한 query-weighted 기준으로는 **Hybrid+Reranker(0.7883)가
+모든 지표에서 1위**다. 이 반전은 CVE-weighted 평균에서 `attribute_only_hard`의
+34-CVE 그룹(반복 34회)이 Hybrid+Reranker에 특히 불리하게 반복 집계됐기 때문이며,
+독립적인 307개 질의로 보면 Hybrid+Reranker가 가장 강하다는 것이 더 신뢰할 수
+있는 결론이다. 두 관점 모두 공통적으로 확인하는 것은: CVE ID를 제거하면 BM25가
+더 이상 1위가 아니라는 진단 자체는 CVE-weighted든 query-weighted든 동일하게
+성립한다.
+
+템플릿(난이도)별로 보면 그 원인이 더 분명해진다 (query-weighted, 값은 Hit@1;
+전체 표는 `data/results/retrieval_metrics_hard_by_type_query_weighted.md`):
+
+| Method | product_version (88) | severity_scenario (98) | attack_condition (92) | attribute_only (29) |
 | --- | --- | --- | --- | --- |
-| BM25 | 0.7700 | 0.8000 | 0.7700 | 0.3400 |
-| Dense | 0.8600 | 0.7300 | 0.7900 | 0.4100 |
-| Hybrid | 0.8000 | 0.8200 | 0.7900 | 0.4100 |
-| Hybrid + Reranker | 0.9000 | 0.7500 | 0.8800 | 0.0700 |
+| BM25 | 0.8295 | 0.7959 | 0.7935 | 0.0345 |
+| Dense | 0.9091 | 0.7245 | 0.7935 | 0.0690 |
+| Hybrid | 0.8636 | 0.8163 | 0.8152 | 0.0690 |
+| Hybrid + Reranker | 0.9545 | 0.7449 | 0.9130 | 0.0345 |
 
-(값은 Hit@1) 벤더/제품명이 질문에 남아 있는 세 템플릿에서는 모든 방법이
-0.73~0.90 수준을 유지하지만, 벤더/제품명을 완전히 제거하고 공격 조건(AV/PR/UI)과
-영향도만 남긴 `attribute_only_hard`에서는 BM25/Dense/Hybrid가 0.34~0.41로 떨어진다
-(gold-set 채점 이전에는 0.01~0.02로 계산되었으나, 이는 앞서 설명한 단일-CVE
-채점의 함정 때문이었다). 여전히 0.4 안팎이라는 것은 방법론의 결함이 아니라
-"제품명 없이는 검색 전략을 아무리 바꿔도 정답 집합 중 하나를 1위로 정확히
-찍기가 원래도 어렵다"는, retrieval 자체의 한계를 보여준다.
-
-`attribute_only_hard`에서 Hybrid+Reranker만 Hit@1이 0.0700으로 다른 세 방법
-(0.34~0.41)보다 뚜렷하게 낮으면서 Recall@5(0.47)·Recall@10(0.58)는 오히려 가장
-높다는 점은 눈에 띄는 이상 패턴이다. 즉 reranker가 정답 집합에 속한 문서를
-상위 10위 안에는 잘 포함시키지만, 1위로 정확히 올리는 데는 다른 방법보다 약하다.
-정답이 여러 개인 상황에서 cross-encoder가 정답 집합 내부의 특정 CVE 문서
-하나에 과도하게 높은 점수를 주기보다 집합 전체에 점수를 고르게 분산시키기
-때문일 수 있다는 가설은 있으나, 이 저장소의 실험만으로 원인을 확정할 수는
-없다 — 후속 분석이 필요한 관찰로 남겨둔다.
+(괄호는 unique 질의 수) 벤더/제품명이 남아 있는 세 템플릿에서는 모든 방법이
+0.72~0.95 수준을 유지하지만, 제품명을 완전히 제거한 `attribute_only_hard`의
+독립적인 29개 프로필에서는 **네 방법 모두 3~7% 수준으로 비슷하게 낮다**. 이전
+CVE-weighted 표에서는 Hybrid+Reranker만 유독 낮게(0.0700) 보이고 나머지
+세 방법은 0.34~0.41로 훨씬 높아 보였는데, 그 차이는 reranker의 특성이 아니라
+34-CVE 그룹 하나의 (우연히 맞힌) 성공이 CVE-weighted 평균에서 34번 반복
+집계됐기 때문이었다 — query-weighted로 보면 그 우위는 사라지고 네 방법이
+모두 비슷하게 어려움을 겪는다. 즉 "제품명 없이는 검색 전략을 아무리 바꿔도
+정답 집합 중 하나를 1위로 정확히 찍기가 원래도 어렵다"는 retrieval 자체의
+한계이며, 특정 방법의 결함으로 보기는 어렵다.
 
 재현:
 
@@ -284,8 +330,13 @@ GitHub 저장소에는 용량이 큰 NVD/KEV 원본, 재생성 가능한 dense e
 - `data/corpus/cve_corpus.jsonl`: 검색 문서 및 메타데이터
 - `data/results/retrieval_results.jsonl`: 질의·방법별 top-10 순위와 hit
 - `data/results/retrieval_metrics.*`: Hit/Recall/MRR/nDCG
-- `data/results/retrieval_metrics_hard.*`: Hard split(CVE ID 미포함) 방법별 Hit/Recall/MRR/nDCG
-- `data/results/retrieval_metrics_hard_by_type.*`: Hard split 템플릿(난이도)별 세부 지표
+- `data/results/retrieval_metrics_hard.*`: Hard split(CVE ID 미포함) 방법별
+  Hit/Recall/MRR/nDCG, CVE-weighted(400행, 중복 질의 포함)
+- `data/results/retrieval_metrics_hard_query_weighted.*`: 위와 동일하지만
+  (question_type, question_ko) 기준 dedup한 307개 unique 질의로 집계
+- `data/results/retrieval_metrics_hard_by_type.*`,
+  `retrieval_metrics_hard_by_type_query_weighted.*`: 템플릿(난이도)별 세부 지표,
+  CVE-weighted/query-weighted 각각
 - `data/results/generated_answers_qwen.jsonl`: 모델 원문, 복구 JSON, 파싱 상태,
   인용 및 오류. JSON 실패 행도 삭제하지 않는다. 각 행에는 생성 모델명과
   generation 설정 metadata를 함께 기록한다.
