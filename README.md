@@ -93,7 +93,7 @@ python scripts/run_all.py --mode hard_retrieval_only
 ## 프로젝트 구조
 
 ```text
-cve_kr_rag_eval/
+CVE_KR_RAG/
 ├── config.yaml
 ├── requirements.txt
 ├── .env.example
